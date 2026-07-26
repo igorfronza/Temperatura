@@ -8,6 +8,7 @@
 #include <Adafruit_SSD1306.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include "config.h"
 
 // ============================================================
@@ -25,22 +26,41 @@ PubSubClient mqtt(espClient);
 // ============================================================
 float temperatura = 0.0;
 float umidade = 0.0;
-bool sonoffLigado = false;
-bool sonoffConectado = false;   // true = tomada respondeu OK
 
+// --- 4 Sonoffs ---
+bool sonoffEstado[SONOFF_COUNT] = {false, false, false, false};
+
+// Nomes (definidos no config.h, copiamos para array em runtime)
+const char* sonoffNome[SONOFF_COUNT] = {
+  SONOFF_NAME_1, SONOFF_NAME_2, SONOFF_NAME_3, SONOFF_NAME_4
+};
+
+// Entity IDs do Home Assistant
+const char* sonoffEntity[SONOFF_COUNT] = {
+  HA_ENTITY_1, HA_ENTITY_2, HA_ENTITY_3, HA_ENTITY_4
+};
+
+// --- Botões físicos ---
+const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4};
+unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0};
+
+// Timers
 unsigned long lastSensor = 0;
 unsigned long lastMqtt = 0;
+unsigned long lastHaStatus = 0;
 
 // ============================================================
 // Forward declarations
 // ============================================================
 void conectarWiFi();
 void conectarMQTT();
-void callbackMQTT(char* topic, byte* payload, unsigned int length);
 void lerSensor();
+void consultarEstadoSonoffs();
+void haPost(String service, String entityId);
 void atualizarDisplay();
 void notificarWebSocket();
-void comandarSonoff(bool ligar);
+void verificarBotoes();
+void comandarSonoff(int id, bool ligar);
 
 // ============================================================
 // SETUP
@@ -65,7 +85,7 @@ void setup() {
     display.display();
   }
 
-  // --- LittleFS (página web) ---
+  // --- LittleFS ---
   if (!LittleFS.begin()) {
     Serial.println(F("Erro ao montar LittleFS"));
   }
@@ -73,13 +93,13 @@ void setup() {
   // --- WiFi ---
   conectarWiFi();
 
-  // --- MQTT ---
+  // --- MQTT (apenas para publicar temperatura/umidade) ---
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
-  mqtt.setCallback(callbackMQTT);
 
-  // --- LED indicador ---
-  pinMode(LED_SONOFF, OUTPUT);
-  digitalWrite(LED_SONOFF, LOW);
+  // --- Botões físicos ---
+  for (int i = 0; i < SONOFF_COUNT; i++) {
+    pinMode(btnPins[i], INPUT_PULLUP);
+  }
 
   // ==========================================================
   // Rotas do servidor web
@@ -90,33 +110,53 @@ void setup() {
     request->send(LittleFS, "/index.html", "text/html");
   });
 
-  // API: leitura atual (JSON)
+  // API: leitura completa (JSON)
   server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest* request) {
-    DynamicJsonDocument doc(256);
+    DynamicJsonDocument doc(512);
     doc["temperatura"] = temperatura;
     doc["umidade"] = umidade;
-    doc["sonoff"] = sonoffLigado ? "ligado" : "desligado";
-    doc["sonoff_ok"] = sonoffConectado;
-
+    JsonArray arr = doc.createNestedArray("sonoffs");
+    for (int i = 0; i < SONOFF_COUNT; i++) {
+      JsonObject s = arr.createNestedObject();
+      s["id"] = i + 1;
+      s["nome"] = sonoffNome[i];
+      s["ligado"] = sonoffEstado[i];
+    }
     String json;
     serializeJson(doc, json);
     request->send(200, "application/json", json);
   });
 
-  // API: ligar/desligar tomada Sonoff
+  // API: ligar/desligar Sonoff específico
+  // Ex: POST /api/sonoff  body: id=1&estado=1
   server.on("/api/sonoff", HTTP_POST, [](AsyncWebServerRequest* request) {
+    int id = 0;
     String estado;
-    if (request->hasParam("estado", true)) {
+
+    if (request->hasParam("id", true))
+      id = request->getParam("id", true)->value().toInt();
+    else if (request->hasParam("id"))
+      id = request->getParam("id")->value().toInt();
+
+    if (request->hasParam("estado", true))
       estado = request->getParam("estado", true)->value();
-    } else if (request->hasParam("estado")) {
+    else if (request->hasParam("estado"))
       estado = request->getParam("estado")->value();
+
+    if (id < 1 || id > SONOFF_COUNT) {
+      request->send(400, "application/json", "{\"erro\":\"id invalido\"}");
+      return;
     }
 
     bool ligar = (estado == "1" || estado == "ligado" || estado == "on");
-    comandarSonoff(ligar);
+    comandarSonoff(id - 1, ligar);
 
-    request->send(200, "application/json",
-                  ligar ? "{\"status\":\"ligado\"}" : "{\"status\":\"desligado\"}");
+    DynamicJsonDocument doc(64);
+    doc["id"] = id;
+    doc["status"] = ligar ? "ligado" : "desligado";
+    String json;
+    serializeJson(doc, json);
+    request->send(200, "application/json", json);
   });
 
   // API: forçar leitura do sensor
@@ -135,13 +175,11 @@ void setup() {
                   AwsEventType type, void* arg, uint8_t* data, size_t len) {
     if (type == WS_EVT_CONNECT) {
       Serial.printf("WebSocket cliente #%u conectado\n", client->id());
-      // envia estado atual ao conectar
       notificarWebSocket();
     }
   });
   server.addHandler(&ws);
 
-  // Inicia servidor
   server.begin();
   Serial.println(F("Servidor HTTP iniciado"));
 }
@@ -157,10 +195,12 @@ void loop() {
     lastSensor = agora;
     lerSensor();
     atualizarDisplay();
-    notificarWebSocket();
   }
 
-  // Publicação MQTT
+  // Leitura dos botões físicos
+  verificarBotoes();
+
+  // Publicação MQTT (temperatura + umidade)
   if (agora - lastMqtt >= INTERVAL_MQTT) {
     lastMqtt = agora;
     if (mqtt.connected()) {
@@ -169,8 +209,14 @@ void loop() {
       mqtt.publish(MQTT_TOPIC_TEMP, buf);
       dtostrf(umidade, 4, 1, buf);
       mqtt.publish(MQTT_TOPIC_HUMID, buf);
-      mqtt.publish(MQTT_TOPIC_SONOFF_ST, sonoffLigado ? "ON" : "OFF");
     }
+    notificarWebSocket();
+  }
+
+  // Consulta estado dos Sonoffs via REST API do Home Assistant
+  if (agora - lastHaStatus >= INTERVAL_MQTT) {
+    lastHaStatus = agora;
+    consultarEstadoSonoffs();
   }
 
   // Mantém conexões
@@ -226,27 +272,13 @@ void conectarMQTT() {
 
   if (mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASSWORD)) {
     Serial.println(F("OK"));
-    // Inscreve no tópico de comando do Sonoff
-    mqtt.subscribe(MQTT_TOPIC_SONOFF);
   } else {
     Serial.printf("Falha (rc=%d)\n", mqtt.state());
   }
 }
 
 void callbackMQTT(char* topic, byte* payload, unsigned int length) {
-  // Copia payload para string
-  char msg[32];
-  unsigned int len = length < 31 ? length : 31;
-  memcpy(msg, payload, len);
-  msg[len] = '\0';
-
-  Serial.printf("MQTT recebido [%s]: %s\n", topic, msg);
-
-  if (strcmp(topic, MQTT_TOPIC_SONOFF) == 0) {
-    bool ligar = (strcmp(msg, "ON") == 0 || strcmp(msg, "1") == 0 ||
-                   strcmp(msg, "ligado") == 0);
-    comandarSonoff(ligar);
-  }
+  // Callback vazio — comandos e estado dos Sonoffs via REST API
 }
 
 // ============================================================
@@ -263,30 +295,59 @@ void lerSensor() {
 }
 
 // ============================================================
-// Display OLED
+// Display OLED — tela única com sensores + 4 Sonoffs
 // ============================================================
 void atualizarDisplay() {
   display.clearDisplay();
-  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
-  // Linha 1: IP
+  // --- IP no topo ---
+  display.setTextSize(1);
   display.setCursor(0, 0);
   display.print(WiFi.localIP());
 
-  // Linha 2: Temperatura (texto maior)
+  // Linha separadora
+  display.drawLine(0, 9, SCREEN_WIDTH, 9, SSD1306_WHITE);
+
+  // --- Temperatura (y=16 para ficar nos LEDs azuis) ---
   display.setTextSize(2);
-  display.setCursor(0, 14);
-  display.printf("%.1fC", temperatura);
-
-  // Linha 3: Umidade
+  display.setCursor(0, 16);
+  display.printf("%.1f", temperatura);
   display.setTextSize(1);
-  display.setCursor(0, 40);
-  display.printf("Umid: %.1f%%", umidade);
+  display.print("C");
 
-  // Linha 4: Tomada Sonoff
-  display.setCursor(0, 52);
-  display.print(sonoffLigado ? "Tomada: LIGADA" : "Tomada: DESLIG");
+  // --- Umidade (ao lado, mesma altura) ---
+  display.setTextSize(2);
+  display.setCursor(70, 16);
+  display.printf("%.1f", umidade);
+  display.setTextSize(1);
+  display.print("%");
+
+  // Linha separadora abaixo dos valores
+  display.drawLine(0, 33, SCREEN_WIDTH, 33, SSD1306_WHITE);
+
+  // --- 4 Sonoffs em 2 colunas x 2 linhas ---
+  display.setTextSize(1);
+  for (int i = 0; i < SONOFF_COUNT; i++) {
+    int col = i % 2;           // 0=esquerda, 1=direita
+    int row = i / 2;           // 0=superior, 1=inferior
+
+    int xNome = col * 64 + 16;           // texto depois do círculo
+    int xCirculo = col * 64 + 4;         // posição X do círculo
+    int yCirculo = 42 + row * 14;        // centro Y do círculo
+    int yTexto = yCirculo - 3;           // Y do texto
+
+    // Círculo: preenchido = LIGADO, vazio = DESLIGADO
+    if (sonoffEstado[i]) {
+      display.fillCircle(xCirculo, yCirculo, 4, SSD1306_WHITE);   // preenchido
+    } else {
+      display.drawCircle(xCirculo, yCirculo, 4, SSD1306_WHITE);   // vazio
+    }
+
+    // Nome
+    display.setCursor(xNome, yTexto);
+    display.print(sonoffNome[i]);
+  }
 
   display.display();
 }
@@ -295,10 +356,17 @@ void atualizarDisplay() {
 // WebSocket: notifica todos os clientes
 // ============================================================
 void notificarWebSocket() {
-  DynamicJsonDocument doc(256);
+  DynamicJsonDocument doc(512);
   doc["temperatura"] = temperatura;
   doc["umidade"] = umidade;
-  doc["sonoff"] = sonoffLigado ? "ligado" : "desligado";
+
+  JsonArray arr = doc.createNestedArray("sonoffs");
+  for (int i = 0; i < SONOFF_COUNT; i++) {
+    JsonObject s = arr.createNestedObject();
+    s["id"] = i + 1;
+    s["nome"] = sonoffNome[i];
+    s["ligado"] = sonoffEstado[i];
+  }
 
   String json;
   serializeJson(doc, json);
@@ -306,18 +374,116 @@ void notificarWebSocket() {
 }
 
 // ============================================================
-// Comando para a tomada Sonoff (via MQTT)
+// Comando para o Sonoff (via REST API do Home Assistant)
 // ============================================================
-void comandarSonoff(bool ligar) {
-  sonoffLigado = ligar;
-  digitalWrite(LED_SONOFF, ligar ? HIGH : LOW);
+void comandarSonoff(int id, bool ligar) {
+  if (id < 0 || id >= SONOFF_COUNT) return;
 
-  // Publica comando no tópico do Sonoff
-  // No Home Assistant, crie uma automação que escute este tópico
-  // e acione o switch correspondente
-  mqtt.publish(MQTT_TOPIC_SONOFF_ST, ligar ? "ON" : "OFF");
+  String service = ligar ? "turn_on" : "turn_off";
+  haPost(service, sonoffEntity[id]);
 
-  Serial.printf("Sonoff -> %s\n", ligar ? "LIGADO" : "DESLIGADO");
+  // Atualiza estado local (depois a consulta REST confirma)
+  sonoffEstado[id] = ligar;
+
+  Serial.printf("Sonoff %d (%s) -> %s\n", id + 1, sonoffNome[id],
+                ligar ? "LIGADO" : "DESLIGADO");
+
   atualizarDisplay();
   notificarWebSocket();
+}
+
+// ============================================================
+// POST para Home Assistant REST API
+// Ex: /api/services/switch/turn_on  body: {"entity_id": "switch.xxx"}
+// ============================================================
+void haPost(String service, String entityId) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  String url = "http://" + String(HA_HOST) + ":" + String(HA_PORT) +
+               "/api/services/switch/" + service;
+
+  http.begin(url);
+  http.addHeader("Authorization", "Bearer " + String(HA_TOKEN));
+  http.addHeader("Content-Type", "application/json");
+
+  String body = "{\"entity_id\":\"" + entityId + "\"}";
+
+  int httpCode = http.POST(body);
+  Serial.printf("HA POST %s [%s] -> %d\n", service.c_str(), entityId.c_str(),
+                httpCode);
+
+  if (httpCode > 0 && httpCode < 400) {
+    String resp = http.getString();
+    Serial.println(resp);
+  } else {
+    Serial.printf("  ERRO: %s\n", http.errorToString(httpCode).c_str());
+  }
+
+  http.end();
+}
+
+// ============================================================
+// Consulta estado de TODOS os Sonoffs via REST API
+// GET /api/states/switch.sonoff_XXXXXXXXXXXX
+// ============================================================
+void consultarEstadoSonoffs() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  for (int i = 0; i < SONOFF_COUNT; i++) {
+    HTTPClient http;
+    String url = "http://" + String(HA_HOST) + ":" + String(HA_PORT) +
+                 "/api/states/" + sonoffEntity[i];
+
+    http.begin(url);
+    http.addHeader("Authorization", "Bearer " + String(HA_TOKEN));
+
+    int httpCode = http.GET();
+    if (httpCode == 200) {
+      String resp = http.getString();
+
+      // Parse JSON: {"state": "on", ...} ou {"state": "off", ...}
+      DynamicJsonDocument doc(512);
+      DeserializationError err = deserializeJson(doc, resp);
+      if (!err) {
+        const char* state = doc["state"];
+        bool ligado = (strcmp(state, "on") == 0);
+        if (sonoffEstado[i] != ligado) {
+          sonoffEstado[i] = ligado;
+          Serial.printf("HA Estado %s = %s\n", sonoffEntity[i], state);
+          atualizarDisplay();
+          notificarWebSocket();
+        }
+      }
+    } else {
+      Serial.printf("HA GET %s -> erro %d\n", sonoffEntity[i], httpCode);
+    }
+
+    http.end();
+    delay(50);  // pequena pausa entre requisições
+  }
+}
+
+// ============================================================
+// Leitura dos botões físicos (com debounce)
+// Pressionar = alterna estado do Sonoff correspondente
+// ============================================================
+void verificarBotoes() {
+  unsigned long agora = millis();
+
+  for (int i = 0; i < SONOFF_COUNT; i++) {
+    if (digitalRead(btnPins[i]) == LOW) {  // pull-up: LOW = pressionado
+      if (agora - lastBtnPress[i] >= DEBOUNCE_MS) {
+        lastBtnPress[i] = agora;
+
+        // Alterna o estado
+        bool novoEstado = !sonoffEstado[i];
+        comandarSonoff(i, novoEstado);
+
+        Serial.printf("Botao %d pressionado -> %s %s\n",
+                      i + 1, sonoffNome[i],
+                      novoEstado ? "LIGADO" : "DESLIGADO");
+      }
+    }
+  }
 }

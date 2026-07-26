@@ -11,14 +11,14 @@ Projeto de monitoramento de temperatura e umidade com **ESP32**, sensor **DHT22*
 | ESP32 | ESP-WROOM-32 WiFi Bluetooth DEVKit V1 30 Pinos |
 | DHT22 | Sensor de temperatura e umidade |
 | OLED 0.96" | SSD1306 I2C 128×64 px (azul/amarelo) |
-| Sonoff | Tomada inteligente (via Home Assistant MQTT) |
+| Sonoff | 4 tomadas inteligentes (via Home Assistant MQTT) |
 
 ## 🔌 Pinagem
 
 | OLED | ESP32 |
 |---|---|
 | GND | GND |
-| VCC | 3.3V |
+| VCC | VIN (5V) |
 | SCL | GPIO 22 |
 | SDA | GPIO 21 |
 
@@ -72,9 +72,24 @@ Adicione no `configuration.yaml`:
 ```yaml
 mqtt:
   switch:
-    - name: "Tomada Sonoff ESP32"
-      state_topic: "esp32/sonoff/estado"
-      command_topic: "esp32/sonoff/comando"
+    - name: "Sonoff 1 - Sala"
+      state_topic: "esp32/sonoff1/estado"
+      command_topic: "esp32/sonoff1/comando"
+      payload_on: "ON"
+      payload_off: "OFF"
+    - name: "Sonoff 2 - Quarto"
+      state_topic: "esp32/sonoff2/estado"
+      command_topic: "esp32/sonoff2/comando"
+      payload_on: "ON"
+      payload_off: "OFF"
+    - name: "Sonoff 3 - Cozinha"
+      state_topic: "esp32/sonoff3/estado"
+      command_topic: "esp32/sonoff3/comando"
+      payload_on: "ON"
+      payload_off: "OFF"
+    - name: "Sonoff 4 - Escritório"
+      state_topic: "esp32/sonoff4/estado"
+      command_topic: "esp32/sonoff4/comando"
       payload_on: "ON"
       payload_off: "OFF"
 
@@ -94,8 +109,14 @@ mqtt:
 |---|---|---|
 | `esp32/temperatura/temperatura` | ESP32 → HA | Temperatura (°C) |
 | `esp32/temperatura/umidade` | ESP32 → HA | Umidade (%) |
-| `esp32/sonoff/comando` | HA → ESP32 | Comando liga/desliga |
-| `esp32/sonoff/estado` | ESP32 → HA | Estado atual da tomada |
+| `esp32/sonoff1/comando` | ESP32 → HA | Comando Sonoff 1 |
+| `esp32/sonoff1/estado` | HA → ESP32 | Estado Sonoff 1 |
+| `esp32/sonoff2/comando` | ESP32 → HA | Comando Sonoff 2 |
+| `esp32/sonoff2/estado` | HA → ESP32 | Estado Sonoff 2 |
+| `esp32/sonoff3/comando` | ESP32 → HA | Comando Sonoff 3 |
+| `esp32/sonoff3/estado` | HA → ESP32 | Estado Sonoff 3 |
+| `esp32/sonoff4/comando` | ESP32 → HA | Comando Sonoff 4 |
+| `esp32/sonoff4/estado` | HA → ESP32 | Estado Sonoff 4 |
 
 ## 🌐 API HTTP
 
@@ -103,7 +124,7 @@ mqtt:
 |---|---|---|
 | `/` | GET | Página web |
 | `/api/status` | GET | JSON com temperatura, umidade e estado |
-| `/api/sonoff?estado=1` | POST | Liga (1/ligado/on) ou desliga (0/desligado/off) |
+| `/api/sonoff` | POST | Controla Sonoff: `id=1&estado=1` (liga) ou `id=2&estado=0` (desliga) |
 | `/api/ler` | GET | Força leitura do sensor |
 | `/ws` | WebSocket | Atualizações em tempo real |
 
@@ -111,8 +132,14 @@ mqtt:
 
 A página web mostra em tempo real:
 - Temperatura e umidade com atualização via WebSocket
-- Controle ON/OFF da tomada Sonoff
+- 4 botões toggle para controle individual dos Sonoffs
 - Indicador visual de conexão
+
+### Display OLED
+
+O display alterna entre duas telas a cada 3 segundos:
+- **Tela 1/2**: Temperatura, umidade e IP
+- **Tela 2/2**: Status ON/OFF dos 4 Sonoffs em grid 2×2
 
 ---
 

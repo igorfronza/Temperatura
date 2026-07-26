@@ -30,75 +30,95 @@
     max-width: 420px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
   }
   h1 {
     text-align: center;
-    font-size: 1.4rem;
+    font-size: 1.3rem;
     font-weight: 600;
     letter-spacing: 0.5px;
   }
   .card {
     background: var(--card);
     border-radius: 16px;
-    padding: 24px;
+    padding: 18px;
     box-shadow: 0 4px 24px rgba(0,0,0,.3);
   }
   .sensor-row {
     display: flex;
     justify-content: space-around;
     gap: 12px;
-    margin-bottom: 12px;
   }
   .sensor-box {
     flex: 1;
     text-align: center;
-    padding: 16px 8px;
+    padding: 14px 8px;
     border-radius: 12px;
     background: var(--accent);
   }
   .sensor-box .label {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 1px;
     opacity: 0.7;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
   .sensor-box .value {
-    font-size: 2rem;
+    font-size: 1.8rem;
     font-weight: 700;
   }
   .sensor-box .unit {
-    font-size: 1rem;
+    font-size: 0.85rem;
     opacity: 0.7;
   }
-  .sonoff-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+
+  /* Cards dos Sonoffs */
+  .sonoff-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
-  .sonoff-label {
-    font-weight: 600;
+  .sonoff-item {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 14px 12px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     gap: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.3);
+    transition: border 0.3s;
+    border: 2px solid transparent;
+  }
+  .sonoff-item.on {
+    border-color: var(--green);
+  }
+  .sonoff-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .dot {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     display: inline-block;
-    transition: background .3s;
+    background: #555;
+    transition: background .3s, box-shadow .3s;
   }
-  .dot.on  { background: var(--green); box-shadow: 0 0 10px var(--green); }
-  .dot.off { background: #555; }
+  .dot.on {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+  }
 
   /* Toggle switch */
   .switch {
     position: relative;
     display: inline-block;
-    width: 56px;
-    height: 30px;
+    width: 50px;
+    height: 26px;
   }
   .switch input { opacity: 0; width: 0; height: 0; }
   .slider {
@@ -106,14 +126,14 @@
     cursor: pointer;
     inset: 0;
     background: #555;
-    border-radius: 30px;
+    border-radius: 26px;
     transition: .3s;
   }
   .slider::before {
     content: "";
     position: absolute;
-    height: 24px;
-    width: 24px;
+    height: 20px;
+    width: 20px;
     left: 3px;
     bottom: 3px;
     background: white;
@@ -121,13 +141,12 @@
     transition: .3s;
   }
   input:checked + .slider { background: var(--green); }
-  input:checked + .slider::before { transform: translateX(26px); }
+  input:checked + .slider::before { transform: translateX(24px); }
 
   .footer {
     text-align: center;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     opacity: 0.4;
-    margin-top: 4px;
   }
   .status-bar {
     display: flex;
@@ -136,9 +155,7 @@
     opacity: 0.5;
     padding: 0 4px;
   }
-  .loading {
-    animation: pulse 1.5s infinite;
-  }
+  .loading { animation: pulse 1.5s infinite; }
   @keyframes pulse {
     0%,100% { opacity: 1; }
     50% { opacity: 0.4; }
@@ -165,30 +182,42 @@
     </div>
   </div>
 
-  <!-- Controle Sonoff -->
-  <div class="card sonoff-card">
-    <div class="sonoff-label">
-      <span class="dot off" id="dot"></span>
-      <span id="sonoffText">Tomada Desligada</span>
-    </div>
-    <label class="switch">
-      <input type="checkbox" id="sonoffToggle" onchange="toggleSonoff()">
-      <span class="slider"></span>
-    </label>
-  </div>
+  <!-- 4 Sonoffs -->
+  <div class="sonoff-grid" id="sonoffGrid"></div>
 
   <div class="status-bar">
     <span id="wsStatus" class="loading">Conectando...</span>
     <span id="updateTime">--</span>
   </div>
 
-  <div class="footer">ESP32 + DHT22 + Sonoff &bull; Home Assistant</div>
+  <div class="footer">ESP32 + DHT22 + 4 Sonoffs &bull; Home Assistant</div>
 </div>
 
 <script>
 const wsUrl = 'ws://' + location.host + '/ws';
 let socket = null;
 let reconnectTimer = null;
+
+// Template HTML para cada Sonoff
+function criarSonoffHTML(id, nome) {
+  return `
+    <div class="sonoff-item" id="sonoff-${id}">
+      <div class="sonoff-name">
+        <span class="dot" id="dot-${id}"></span>
+        ${nome}
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-${id}" onchange="toggleSonoff(${id})">
+        <span class="slider"></span>
+      </label>
+    </div>`;
+}
+
+// Cria os 4 cards de Sonoff (nomes atualizados pelo WebSocket)
+const grid = document.getElementById('sonoffGrid');
+for (let i = 1; i <= 4; i++) {
+  grid.innerHTML += criarSonoffHTML(i, 'Tomada ' + i);
+}
 
 function connectWebSocket() {
   if (socket) socket.close();
@@ -208,10 +237,11 @@ function connectWebSocket() {
       if (data.umidade !== undefined) {
         document.getElementById('umidade').textContent = data.umidade.toFixed(1);
       }
-      if (data.sonoff !== undefined) {
-        const ligado = data.sonoff === 'ligado';
-        document.getElementById('sonoffToggle').checked = ligado;
-        updateSonoffUI(ligado);
+      // Atualiza estado dos Sonoffs
+      if (data.sonoffs && Array.isArray(data.sonoffs)) {
+        data.sonoffs.forEach(s => {
+          updateSonoffUI(s.id, s.nome, s.ligado);
+        });
       }
       document.getElementById('updateTime').textContent =
         new Date().toLocaleTimeString('pt-BR');
@@ -229,42 +259,56 @@ function connectWebSocket() {
   socket.onerror = () => socket.close();
 }
 
-function updateSonoffUI(ligado) {
-  const dot = document.getElementById('dot');
-  const txt = document.getElementById('sonoffText');
+function updateSonoffUI(id, nome, ligado) {
+  const item = document.getElementById('sonoff-' + id);
+  const dot = document.getElementById('dot-' + id);
+  const toggle = document.getElementById('toggle-' + id);
+
+  if (!item || !toggle) return;
+
+  // Atualiza nome se veio do WebSocket
+  if (nome) {
+    const nameDiv = item.querySelector('.sonoff-name');
+    nameDiv.innerHTML = '<span class="dot' + (ligado ? ' on' : '') + '" id="dot-' + id + '"></span> ' + nome;
+  }
+
+  toggle.checked = ligado;
+
   if (ligado) {
-    dot.className = 'dot on';
-    txt.textContent = 'Tomada Ligada';
+    item.classList.add('on');
+    // re-seleciona dot após recriação
+    const d = document.getElementById('dot-' + id);
+    if (d) d.classList.add('on');
   } else {
-    dot.className = 'dot off';
-    txt.textContent = 'Tomada Desligada';
+    item.classList.remove('on');
   }
 }
 
-function toggleSonoff() {
-  const ligado = document.getElementById('sonoffToggle').checked;
+function toggleSonoff(id) {
+  const toggle = document.getElementById('toggle-' + id);
+  const ligado = toggle.checked;
   const estado = ligado ? '1' : '0';
 
   fetch('/api/sonoff', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'estado=' + estado
+    body: 'id=' + id + '&estado=' + estado
   })
   .then(r => r.json())
   .then(data => {
-    updateSonoffUI(ligado);
-    console.log('Sonoff:', data);
+    console.log('Sonoff ' + id + ':', data);
+    updateSonoffUI(id, null, ligado);
   })
   .catch(err => {
     console.error('Erro:', err);
-    document.getElementById('sonoffToggle').checked = !ligado;
+    toggle.checked = !ligado;  // reverte
   });
 }
 
 // Inicia
 connectWebSocket();
 
-// Fallback: polling HTTP a cada 10s caso WebSocket falhe
+// Fallback: polling HTTP a cada 15s
 setInterval(() => {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     fetch('/api/status')
@@ -273,13 +317,16 @@ setInterval(() => {
         if (data.temperatura !== undefined) {
           document.getElementById('temperatura').textContent = data.temperatura.toFixed(1);
           document.getElementById('umidade').textContent = data.umidade.toFixed(1);
-          document.getElementById('updateTime').textContent =
-            new Date().toLocaleTimeString('pt-BR');
         }
+        if (data.sonoffs && Array.isArray(data.sonoffs)) {
+          data.sonoffs.forEach(s => updateSonoffUI(s.id, s.nome, s.ligado));
+        }
+        document.getElementById('updateTime').textContent =
+          new Date().toLocaleTimeString('pt-BR');
       })
       .catch(() => {});
   }
-}, 10000);
+}, 15000);
 </script>
 </body>
 </html>

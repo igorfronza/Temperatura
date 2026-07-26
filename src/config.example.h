@@ -10,7 +10,7 @@
 // ============================================================
 // MQTT (Home Assistant)
 // ============================================================
-#define MQTT_BROKER   "192.168.1.XXX"   // IP do Home Assistant / broker MQTT
+#define MQTT_BROKER   "192.168.1.XXX"   // IP do broker MQTT
 #define MQTT_PORT     1883
 #define MQTT_USER     "mqtt_user"
 #define MQTT_PASSWORD "mqtt_password"
@@ -18,8 +18,31 @@
 // Tópicos MQTT
 #define MQTT_TOPIC_TEMP      "esp32/temperatura/temperatura"
 #define MQTT_TOPIC_HUMID     "esp32/temperatura/umidade"
-#define MQTT_TOPIC_SONOFF    "esp32/sonoff/comando"     // recebe comandos
-#define MQTT_TOPIC_SONOFF_ST "esp32/sonoff/estado"      // publica estado
+
+// ============================================================
+// Home Assistant — REST API
+// ============================================================
+#define HA_HOST         "192.168.1.XXX"
+#define HA_PORT         8123
+#define HA_TOKEN        "SEU_LONG_LIVED_ACCESS_TOKEN"
+
+// ============================================================
+// Sonoffs (4 tomadas)
+// Controle direto via REST API do Home Assistant
+// ============================================================
+#define SONOFF_COUNT 4
+
+// Nomes que aparecem no display e na página web
+#define SONOFF_NAME_1 "Sala"
+#define SONOFF_NAME_2 "Quarto"
+#define SONOFF_NAME_3 "Cozinha"
+#define SONOFF_NAME_4 "Escrit."
+
+// Entity ID de cada Sonoff no Home Assistant
+#define HA_ENTITY_1 "switch.sonoff_10011ccb43"
+#define HA_ENTITY_2 "switch.sonoff_10011bdfac"
+#define HA_ENTITY_3 "switch.sonoff_10011c3e2c"
+#define HA_ENTITY_4 "switch.sonoff_10011c39cb"
 
 // ============================================================
 // Pinos
@@ -27,20 +50,20 @@
 #define DHTPIN          4    // DHT22 no GPIO 4
 #define DHTTYPE         DHT22
 
+// Botões físicos (um para cada Sonoff)
+// Pull-up interno: pressionar = LOW
+#define BTN_PIN_1       32
+#define BTN_PIN_2       33
+#define BTN_PIN_3       25
+#define BTN_PIN_4       26
+#define DEBOUNCE_MS     300
+
 // OLED I2C (SDA=GPIO21, SCL=GPIO22 — padrão ESP32)
+// Alimentação: VCC no pino VIN (5V) do ESP32
 #define OLED_SDA        21
 #define OLED_SCL        22
 #define OLED_ADDR       0x3C
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   64
-
-// LED interno para indicar estado da tomada
-#define LED_SONOFF      2    // LED built-in do ESP32
-
-// ============================================================
-// Intervalos (ms)
-// ============================================================
-#define INTERVAL_SENSOR   5000   // leitura do sensor a cada 5s
-#define INTERVAL_MQTT     10000  // publicação MQTT a cada 10s
 
 #endif
