@@ -1,0 +1,26 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+cmake-build-*/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Arquivos de build
+build/
+sdkconfig
+sdkconfig.old
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Credenciais locais (NÃO commitar)
+src/config.h
