@@ -510,35 +510,29 @@ void consultarEstadoSonoffs() {
 
 // ============================================================
 // Leitura dos botões físicos (via interrupção + debounce)
-// A ISR captura o pressionamento instantaneamente
-// O loop principal aplica debounce e processa
+// A ISR captura o pressionamento — NÃO precisa confirmar com digitalRead
 // ============================================================
 void verificarBotoes() {
   unsigned long agora = millis();
 
   for (int i = 0; i < SONOFF_COUNT; i++) {
-    // ISR setou a flag? (pressionamento detectado por hardware)
     if (btnIrq[i]) {
-      btnIrq[i] = false;  // limpa flag imediatamente
+      btnIrq[i] = false;
 
-      // Debounce: ignora se pressionado há menos de DEBOUNCE_MS
+      // Debounce: ignora disparos com menos de DEBOUNCE_MS entre si
       if (agora - lastBtnPress[i] >= DEBOUNCE_MS) {
         lastBtnPress[i] = agora;
 
-        // Confirma que ainda está pressionado (filtra ruído)
-        if (digitalRead(btnPins[i]) == LOW) {
-          // Alterna estado e marca comando pendente
-          sonoffEstado[i] = !sonoffEstado[i];
-          comandoPendente[i] = true;
-          comandoValor[i] = sonoffEstado[i];
+        sonoffEstado[i] = !sonoffEstado[i];
+        comandoPendente[i] = true;
+        comandoValor[i] = sonoffEstado[i];
 
-          atualizarDisplay();
-          notificarWebSocket();
+        atualizarDisplay();
+        notificarWebSocket();
 
-          Serial.printf("Botao %d -> %s %s\n",
-                        i + 1, sonoffNome[i],
-                        sonoffEstado[i] ? "LIGADO" : "DESLIGADO");
-        }
+        Serial.printf("Botao %d -> %s %s\n",
+                      i + 1, sonoffNome[i],
+                      sonoffEstado[i] ? "LIGADO" : "DESLIGADO");
       }
     }
   }
