@@ -45,6 +45,10 @@ const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4, B
 unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0, 0};
 bool btnPressionado[SONOFF_COUNT] = {false, false, false, false, false};
 
+// Comandos pendentes (processados sem bloquear os botões)
+bool comandoPendente[SONOFF_COUNT] = {false, false, false, false, false};
+bool comandoValor[SONOFF_COUNT] = {false, false, false, false, false};
+
 // Timers
 unsigned long lastSensor = 0;
 unsigned long lastMqtt = 0;
@@ -200,6 +204,17 @@ void loop() {
 
   // Leitura dos botões físicos
   verificarBotoes();
+
+  // Processa comandos pendentes (um por iteração, sem bloquear leitura)
+  for (int i = 0; i < SONOFF_COUNT; i++) {
+    if (comandoPendente[i]) {
+      comandoPendente[i] = false;
+      haPost(comandoValor[i] ? "turn_on" : "turn_off", sonoffEntity[i]);
+      Serial.printf("Sonoff %d (%s) -> %s\n", i + 1, sonoffNome[i],
+                    comandoValor[i] ? "LIGADO" : "DESLIGADO");
+      break;  // processa um por iteração
+    }
+  }
 
   // Publicação MQTT (temperatura + umidade)
   if (agora - lastMqtt >= INTERVAL_MQTT) {
@@ -386,16 +401,14 @@ void notificarWebSocket() {
 }
 
 // ============================================================
-// Comando para o Sonoff (via REST API do Home Assistant)
-// ============================================================
+// Comando para o Sonoff (chamado pela API web)
+// Marca pendência — o POST é feito no loop sem bloquear
 void comandarSonoff(int id, bool ligar) {
   if (id < 0 || id >= SONOFF_COUNT) return;
 
-  String service = ligar ? "turn_on" : "turn_off";
-  haPost(service, sonoffEntity[id]);
-
-  // Atualiza estado local (depois a consulta REST confirma)
   sonoffEstado[id] = ligar;
+  comandoPendente[id] = true;
+  comandoValor[id] = ligar;
 
   Serial.printf("Sonoff %d (%s) -> %s\n", id + 1, sonoffNome[id],
                 ligar ? "LIGADO" : "DESLIGADO");
@@ -479,13 +492,13 @@ void consultarEstadoSonoffs() {
 
 // ============================================================
 // Leitura dos botões físicos (debounce com detecção de borda)
-// Só dispara na transição HIGH→LOW e aguarda o botão ser solto
+// NÃO bloqueia — apenas alterna estado local e marca pendência
 // ============================================================
 void verificarBotoes() {
   unsigned long agora = millis();
 
   for (int i = 0; i < SONOFF_COUNT; i++) {
-    bool estadoAtual = (digitalRead(btnPins[i]) == LOW);  // pull-up: LOW = pressionado
+    bool estadoAtual = (digitalRead(btnPins[i]) == LOW);
 
     if (estadoAtual && !btnPressionado[i]) {
       // Borda de descida: botão acabou de ser pressionado
@@ -493,12 +506,17 @@ void verificarBotoes() {
         lastBtnPress[i] = agora;
         btnPressionado[i] = true;
 
-        bool novoEstado = !sonoffEstado[i];
-        comandarSonoff(i, novoEstado);
+        // Alterna estado e marca comando pendente (NÃO bloqueia)
+        sonoffEstado[i] = !sonoffEstado[i];
+        comandoPendente[i] = true;
+        comandoValor[i] = sonoffEstado[i];
+
+        atualizarDisplay();
+        notificarWebSocket();
 
         Serial.printf("Botao %d pressionado -> %s %s\n",
                       i + 1, sonoffNome[i],
-                      novoEstado ? "LIGADO" : "DESLIGADO");
+                      sonoffEstado[i] ? "LIGADO" : "DESLIGADO");
       }
     } else if (!estadoAtual && btnPressionado[i]) {
       // Botão foi solto → libera para próximo acionamento
