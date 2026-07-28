@@ -27,35 +27,36 @@ PubSubClient mqtt(espClient);
 float temperatura = 0.0;
 float umidade = 0.0;
 
-// --- 5 Sonoffs ---
+// --- 5 Sonoffs (ordem física: Muro, Garagem, Container, Quarto, Cuscas) ---
 bool sonoffEstado[SONOFF_COUNT] = {false, false, false, false, false};
 
-// Nomes (definidos no config.h, copiamos para array em runtime)
 const char* sonoffNome[SONOFF_COUNT] = {
-  SONOFF_NAME_1, SONOFF_NAME_2, SONOFF_NAME_3, SONOFF_NAME_4, SONOFF_NAME_5
+  SONOFF_NAME_3, SONOFF_NAME_2, SONOFF_NAME_5, SONOFF_NAME_4, SONOFF_NAME_1
 };
+// Muro         Garagem      Container     Quarto        Cuscas
 
-// Entity IDs do Home Assistant
 const char* sonoffEntity[SONOFF_COUNT] = {
-  HA_ENTITY_1, HA_ENTITY_2, HA_ENTITY_3, HA_ENTITY_4, HA_ENTITY_5
+  HA_ENTITY_3, HA_ENTITY_2, HA_ENTITY_5, HA_ENTITY_4, HA_ENTITY_1
 };
 
 // --- Botões físicos ---
-const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4, BTN_PIN_5};
+const int btnPins[SONOFF_COUNT] = {BTN_PIN_3, BTN_PIN_2, BTN_PIN_5, BTN_PIN_4, BTN_PIN_1};
+//                                 GPIO25    GPIO33    GPIO27    GPIO26    GPIO32
 unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0, 0};
 bool btnPressionado[SONOFF_COUNT] = {false, false, false, false, false};
 
-// Flags de interrupção (voláteis — acessadas pela ISR e loop)
+// Flags de interrupção (voláteis)
 volatile bool btnIrq[SONOFF_COUNT] = {false, false, false, false, false};
 
-// ISRs (uma por pino)
-void IRAM_ATTR isrBtn1() { btnIrq[0] = true; }
-void IRAM_ATTR isrBtn2() { btnIrq[1] = true; }
-void IRAM_ATTR isrBtn3() { btnIrq[2] = true; }
-void IRAM_ATTR isrBtn4() { btnIrq[3] = true; }
-void IRAM_ATTR isrBtn5() { btnIrq[4] = true; }
+// ISRs mapeadas para a posição física correta
+// GPIO32=Cuscas(4), GPIO33=Garagem(1), GPIO25=Muro(0), GPIO26=Quarto(3), GPIO27=Container(2)
+void IRAM_ATTR isrBtn1() { btnIrq[4] = true; }  // GPIO32 → Cuscas (pos 4)
+void IRAM_ATTR isrBtn2() { btnIrq[1] = true; }  // GPIO33 → Garagem (pos 1)
+void IRAM_ATTR isrBtn3() { btnIrq[0] = true; }  // GPIO25 → Muro (pos 0)
+void IRAM_ATTR isrBtn4() { btnIrq[3] = true; }  // GPIO26 → Quarto (pos 3)
+void IRAM_ATTR isrBtn5() { btnIrq[2] = true; }  // GPIO27 → Container (pos 2)
 
-// Comandos pendentes (processados sem bloquear os botões)
+// Comandos pendentes
 bool comandoPendente[SONOFF_COUNT] = {false, false, false, false, false};
 bool comandoValor[SONOFF_COUNT] = {false, false, false, false, false};
 
@@ -117,11 +118,11 @@ void setup() {
   pinMode(btnPins[2], INPUT_PULLUP);
   pinMode(btnPins[3], INPUT_PULLUP);
   pinMode(btnPins[4], INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(btnPins[0]), isrBtn1, FALLING);
-  attachInterrupt(digitalPinToInterrupt(btnPins[1]), isrBtn2, FALLING);
-  attachInterrupt(digitalPinToInterrupt(btnPins[2]), isrBtn3, FALLING);
-  attachInterrupt(digitalPinToInterrupt(btnPins[3]), isrBtn4, FALLING);
-  attachInterrupt(digitalPinToInterrupt(btnPins[4]), isrBtn5, FALLING);
+  attachInterrupt(digitalPinToInterrupt(btnPins[0]), isrBtn3, FALLING); // GPIO25→Muro
+  attachInterrupt(digitalPinToInterrupt(btnPins[1]), isrBtn2, FALLING); // GPIO33→Garagem
+  attachInterrupt(digitalPinToInterrupt(btnPins[2]), isrBtn5, FALLING); // GPIO27→Container
+  attachInterrupt(digitalPinToInterrupt(btnPins[3]), isrBtn4, FALLING); // GPIO26→Quarto
+  attachInterrupt(digitalPinToInterrupt(btnPins[4]), isrBtn1, FALLING); // GPIO32→Cuscas
 
   // ==========================================================
   // Rotas do servidor web
@@ -360,28 +361,23 @@ void atualizarDisplay() {
   // Linha separadora abaixo dos valores
   display.drawLine(0, 33, SCREEN_WIDTH, 33, SSD1306_WHITE);
 
-  // Ordem visual no display: SupEsq, SupDir, InfEsq, InfMeio, InfDir
-  const int displayOrder[SONOFF_COUNT] = {2, 1, 4, 3, 0};
-  //                                     Muro Garagem Cont Quarto Cuscas
-
-  // Nomes para display (versões curtas para caber)
+  // Nomes para display (versões curtas)
   const char* nomesDisplay[SONOFF_COUNT] = {
-    "Cusca", "Garagem", "Muro", "Quarto", "Cont"
+    "Muro", "Garagem", "Cont", "Qrto", "Cusca"
   };
 
   // --- 5 Sonoffs: linha 1 com 2, linha 2 com 3 ---
   display.setTextSize(1);
-  for (int pos = 0; pos < SONOFF_COUNT; pos++) {
-    int i = displayOrder[pos];   // índice real do Sonoff
+  for (int i = 0; i < SONOFF_COUNT; i++) {
     int xCirculo, xNome, row;
 
-    if (pos < 2) {
+    if (i < 2) {
       row = 0;
-      xCirculo = pos * 64 + 4;
-      xNome    = pos * 64 + 14;
+      xCirculo = i * 64 + 4;
+      xNome    = i * 64 + 14;
     } else {
       row = 1;
-      int col = pos - 2;
+      int col = i - 2;
       xCirculo = col * 42 + 2;
       xNome    = col * 42 + 12;
     }
