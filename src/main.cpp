@@ -49,9 +49,9 @@ bool btnPressionado[SONOFF_COUNT] = {false, false, false, false, false};
 volatile bool btnIrq[SONOFF_COUNT] = {false, false, false, false, false};
 
 // ISRs mapeadas para a posição física correta
-// GPIO32=Cuscas(4), GPIO33=Garagem(1), GPIO25=Muro(0), GPIO26=Quarto(3), GPIO27=Container(2)
-void IRAM_ATTR isrBtn1() { btnIrq[4] = true; }  // GPIO32 → Cuscas (pos 4)
-void IRAM_ATTR isrBtn2() { btnIrq[1] = true; }  // GPIO33 → Garagem (pos 1)
+// GPIO32=Cuscas(1), GPIO33=Garagem(4), GPIO25=Muro(0), GPIO26=Quarto(3), GPIO27=Container(2)
+void IRAM_ATTR isrBtn1() { btnIrq[1] = true; }  // GPIO32 → Cuscas (pos 1)
+void IRAM_ATTR isrBtn2() { btnIrq[4] = true; }  // GPIO33 → Garagem (pos 4)
 void IRAM_ATTR isrBtn3() { btnIrq[0] = true; }  // GPIO25 → Muro (pos 0)
 void IRAM_ATTR isrBtn4() { btnIrq[3] = true; }  // GPIO26 → Quarto (pos 3)
 void IRAM_ATTR isrBtn5() { btnIrq[2] = true; }  // GPIO27 → Container (pos 2)
