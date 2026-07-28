@@ -43,6 +43,7 @@ const char* sonoffEntity[SONOFF_COUNT] = {
 // --- Botões físicos ---
 const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4, BTN_PIN_5};
 unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0, 0};
+bool btnPressionado[SONOFF_COUNT] = {false, false, false, false, false};
 
 // Timers
 unsigned long lastSensor = 0;
@@ -476,18 +477,21 @@ void consultarEstadoSonoffs() {
 }
 
 // ============================================================
-// Leitura dos botões físicos (com debounce)
-// Pressionar = alterna estado do Sonoff correspondente
+// Leitura dos botões físicos (debounce com detecção de borda)
+// Só dispara na transição HIGH→LOW e aguarda o botão ser solto
 // ============================================================
 void verificarBotoes() {
   unsigned long agora = millis();
 
   for (int i = 0; i < SONOFF_COUNT; i++) {
-    if (digitalRead(btnPins[i]) == LOW) {  // pull-up: LOW = pressionado
+    bool estadoAtual = (digitalRead(btnPins[i]) == LOW);  // pull-up: LOW = pressionado
+
+    if (estadoAtual && !btnPressionado[i]) {
+      // Borda de descida: botão acabou de ser pressionado
       if (agora - lastBtnPress[i] >= DEBOUNCE_MS) {
         lastBtnPress[i] = agora;
+        btnPressionado[i] = true;
 
-        // Alterna o estado
         bool novoEstado = !sonoffEstado[i];
         comandarSonoff(i, novoEstado);
 
@@ -495,6 +499,9 @@ void verificarBotoes() {
                       i + 1, sonoffNome[i],
                       novoEstado ? "LIGADO" : "DESLIGADO");
       }
+    } else if (!estadoAtual && btnPressionado[i]) {
+      // Botão foi solto → libera para próximo acionamento
+      btnPressionado[i] = false;
     }
   }
 }
