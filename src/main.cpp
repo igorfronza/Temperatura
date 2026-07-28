@@ -360,6 +360,10 @@ void atualizarDisplay() {
   // Linha separadora abaixo dos valores
   display.drawLine(0, 33, SCREEN_WIDTH, 33, SSD1306_WHITE);
 
+  // Ordem visual no display: SupEsq, SupDir, InfEsq, InfMeio, InfDir
+  const int displayOrder[SONOFF_COUNT] = {2, 0, 4, 3, 1};
+  //                                     Muro Cuscas Cont Quarto Garagem
+
   // Nomes para display (linha inferior truncada para caber 3 colunas)
   const char* nomesDisplay[SONOFF_COUNT] = {
     "Cuscas", "Garagem", "Muro", "Quarto", "Cont."
@@ -367,21 +371,19 @@ void atualizarDisplay() {
 
   // --- 5 Sonoffs: linha 1 com 2, linha 2 com 3 ---
   display.setTextSize(1);
-  for (int i = 0; i < SONOFF_COUNT; i++) {
+  for (int pos = 0; pos < SONOFF_COUNT; pos++) {
+    int i = displayOrder[pos];   // índice real do Sonoff
     int xCirculo, xNome, row;
 
-    if (i < 2) {
-      // Linha superior: 2 botões
+    if (pos < 2) {
       row = 0;
-      int col = i;
-      xCirculo = col * 64 + 4;
-      xNome    = col * 64 + 14;   // bolinha mais próxima do nome
+      xCirculo = pos * 64 + 4;
+      xNome    = pos * 64 + 14;
     } else {
-      // Linha inferior: 3 botões (colunas de 42px)
       row = 1;
-      int col = i - 2;
+      int col = pos - 2;
       xCirculo = col * 42 + 2;
-      xNome    = col * 42 + 12;   // bolinha colada no nome (2px de folga)
+      xNome    = col * 42 + 12;
     }
 
     int yCirculo = 37 + row * 13;
