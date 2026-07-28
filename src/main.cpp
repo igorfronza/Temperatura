@@ -45,6 +45,16 @@ const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4, B
 unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0, 0};
 bool btnPressionado[SONOFF_COUNT] = {false, false, false, false, false};
 
+// Flags de interrupção (voláteis — acessadas pela ISR e loop)
+volatile bool btnIrq[SONOFF_COUNT] = {false, false, false, false, false};
+
+// ISRs (uma por pino)
+void IRAM_ATTR isrBtn1() { btnIrq[0] = true; }
+void IRAM_ATTR isrBtn2() { btnIrq[1] = true; }
+void IRAM_ATTR isrBtn3() { btnIrq[2] = true; }
+void IRAM_ATTR isrBtn4() { btnIrq[3] = true; }
+void IRAM_ATTR isrBtn5() { btnIrq[4] = true; }
+
 // Comandos pendentes (processados sem bloquear os botões)
 bool comandoPendente[SONOFF_COUNT] = {false, false, false, false, false};
 bool comandoValor[SONOFF_COUNT] = {false, false, false, false, false};
@@ -101,10 +111,17 @@ void setup() {
   // --- MQTT (apenas para publicar temperatura/umidade) ---
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
 
-  // --- Botões físicos ---
-  for (int i = 0; i < SONOFF_COUNT; i++) {
-    pinMode(btnPins[i], INPUT_PULLUP);
-  }
+  // --- Botões físicos (interrupção na borda de descida) ---
+  pinMode(btnPins[0], INPUT_PULLUP);
+  pinMode(btnPins[1], INPUT_PULLUP);
+  pinMode(btnPins[2], INPUT_PULLUP);
+  pinMode(btnPins[3], INPUT_PULLUP);
+  pinMode(btnPins[4], INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(btnPins[0]), isrBtn1, FALLING);
+  attachInterrupt(digitalPinToInterrupt(btnPins[1]), isrBtn2, FALLING);
+  attachInterrupt(digitalPinToInterrupt(btnPins[2]), isrBtn3, FALLING);
+  attachInterrupt(digitalPinToInterrupt(btnPins[3]), isrBtn4, FALLING);
+  attachInterrupt(digitalPinToInterrupt(btnPins[4]), isrBtn5, FALLING);
 
   // ==========================================================
   // Rotas do servidor web
@@ -492,36 +509,37 @@ void consultarEstadoSonoffs() {
 }
 
 // ============================================================
-// Leitura dos botões físicos (debounce com detecção de borda)
-// NÃO bloqueia — apenas alterna estado local e marca pendência
+// Leitura dos botões físicos (via interrupção + debounce)
+// A ISR captura o pressionamento instantaneamente
+// O loop principal aplica debounce e processa
 // ============================================================
 void verificarBotoes() {
   unsigned long agora = millis();
 
   for (int i = 0; i < SONOFF_COUNT; i++) {
-    bool estadoAtual = (digitalRead(btnPins[i]) == LOW);
+    // ISR setou a flag? (pressionamento detectado por hardware)
+    if (btnIrq[i]) {
+      btnIrq[i] = false;  // limpa flag imediatamente
 
-    if (estadoAtual && !btnPressionado[i]) {
-      // Borda de descida: botão acabou de ser pressionado
+      // Debounce: ignora se pressionado há menos de DEBOUNCE_MS
       if (agora - lastBtnPress[i] >= DEBOUNCE_MS) {
         lastBtnPress[i] = agora;
-        btnPressionado[i] = true;
 
-        // Alterna estado e marca comando pendente (NÃO bloqueia)
-        sonoffEstado[i] = !sonoffEstado[i];
-        comandoPendente[i] = true;
-        comandoValor[i] = sonoffEstado[i];
+        // Confirma que ainda está pressionado (filtra ruído)
+        if (digitalRead(btnPins[i]) == LOW) {
+          // Alterna estado e marca comando pendente
+          sonoffEstado[i] = !sonoffEstado[i];
+          comandoPendente[i] = true;
+          comandoValor[i] = sonoffEstado[i];
 
-        atualizarDisplay();
-        notificarWebSocket();
+          atualizarDisplay();
+          notificarWebSocket();
 
-        Serial.printf("Botao %d pressionado -> %s %s\n",
-                      i + 1, sonoffNome[i],
-                      sonoffEstado[i] ? "LIGADO" : "DESLIGADO");
+          Serial.printf("Botao %d -> %s %s\n",
+                        i + 1, sonoffNome[i],
+                        sonoffEstado[i] ? "LIGADO" : "DESLIGADO");
+        }
       }
-    } else if (!estadoAtual && btnPressionado[i]) {
-      // Botão foi solto → libera para próximo acionamento
-      btnPressionado[i] = false;
     }
   }
 }
