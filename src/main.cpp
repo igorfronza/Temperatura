@@ -360,27 +360,31 @@ void atualizarDisplay() {
   // Linha separadora abaixo dos valores
   display.drawLine(0, 33, SCREEN_WIDTH, 33, SSD1306_WHITE);
 
-  // --- 5 Sonoffs: 2 colunas x 3 linhas (última centralizada) ---
+  // Nomes para display (linha inferior truncada para caber 3 colunas)
+  const char* nomesDisplay[SONOFF_COUNT] = {
+    "Cuscas", "Garagem", "Muro", "Quarto", "Cont."
+  };
+
+  // --- 5 Sonoffs: linha 1 com 2, linha 2 com 3 ---
   display.setTextSize(1);
   for (int i = 0; i < SONOFF_COUNT; i++) {
-    int col, row, xCirculo, xNome;
+    int xCirculo, xNome, row;
 
-    if (i < 4) {
-      // Primeiras 4: grid 2x2
-      col = i % 2;
-      row = i / 2;
+    if (i < 2) {
+      // Linha superior: 2 botões
+      row = 0;
+      int col = i;
       xCirculo = col * 64 + 4;
-      xNome = col * 64 + 16;
+      xNome    = col * 64 + 14;   // bolinha mais próxima do nome
     } else {
-      // 5ª tomada: centralizada na 3ª linha
-      col = 0;
-      row = 2;
-      // Centraliza: (128 - texto_width) / 2, aprox 30px
-      xCirculo = 45;
-      xNome = 57;
+      // Linha inferior: 3 botões (colunas de 42px)
+      row = 1;
+      int col = i - 2;
+      xCirculo = col * 42 + 2;
+      xNome    = col * 42 + 12;   // bolinha colada no nome (2px de folga)
     }
 
-    int yCirculo = 37 + row * 11;
+    int yCirculo = 37 + row * 13;
     int yTexto = yCirculo - 3;
 
     // Círculo: preenchido = LIGADO, vazio = DESLIGADO
@@ -391,7 +395,7 @@ void atualizarDisplay() {
     }
 
     display.setCursor(xNome, yTexto);
-    display.print(sonoffNome[i]);
+    display.print(nomesDisplay[i]);
   }
 
   display.display();
