@@ -378,11 +378,11 @@ void atualizarDisplay() {
     } else {
       row = 1;
       int col = i - 2;
-      xCirculo = col * 42 + 2;
-      xNome    = col * 42 + 12;
+      xCirculo = col * 42 + 4;
+      xNome    = col * 42 + 14;
     }
 
-    int yCirculo = 37 + row * 13;
+    int yCirculo = 40 + row * 13;
     int yTexto = yCirculo - 3;
 
     // Círculo: preenchido = LIGADO, vazio = DESLIGADO
