@@ -205,14 +205,15 @@ void loop() {
   // Leitura dos botões físicos
   verificarBotoes();
 
-  // Processa comandos pendentes (um por iteração, sem bloquear leitura)
+  // Processa comandos pendentes (verifica botões antes de cada POST)
   for (int i = 0; i < SONOFF_COUNT; i++) {
     if (comandoPendente[i]) {
+      verificarBotoes();  // lê botões antes do POST (evita perder press)
       comandoPendente[i] = false;
       haPost(comandoValor[i] ? "turn_on" : "turn_off", sonoffEntity[i]);
       Serial.printf("Sonoff %d (%s) -> %s\n", i + 1, sonoffNome[i],
                     comandoValor[i] ? "LIGADO" : "DESLIGADO");
-      break;  // processa um por iteração
+      break;
     }
   }
 
@@ -431,7 +432,7 @@ void haPost(String service, String entityId) {
   http.begin(url);
   http.addHeader("Authorization", "Bearer " + String(HA_TOKEN));
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(3000);  // timeout de 3s para não travar o loop
+  http.setTimeout(1500);  // timeout curto para não travar o loop
 
   String body = "{\"entity_id\":\"" + entityId + "\"}";
 
