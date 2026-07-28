@@ -361,12 +361,12 @@ void atualizarDisplay() {
   display.drawLine(0, 33, SCREEN_WIDTH, 33, SSD1306_WHITE);
 
   // Ordem visual no display: SupEsq, SupDir, InfEsq, InfMeio, InfDir
-  const int displayOrder[SONOFF_COUNT] = {2, 0, 4, 3, 1};
-  //                                     Muro Cuscas Cont Quarto Garagem
+  const int displayOrder[SONOFF_COUNT] = {2, 1, 4, 3, 0};
+  //                                     Muro Garagem Cont Quarto Cuscas
 
-  // Nomes para display (linha inferior truncada para caber 3 colunas)
+  // Nomes para display (versões curtas para caber)
   const char* nomesDisplay[SONOFF_COUNT] = {
-    "Cuscas", "Garagem", "Muro", "Quarto", "Cont."
+    "Cusca", "Garagem", "Muro", "Quarto", "Cont"
   };
 
   // --- 5 Sonoffs: linha 1 com 2, linha 2 com 3 ---
