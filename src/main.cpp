@@ -27,22 +27,22 @@ PubSubClient mqtt(espClient);
 float temperatura = 0.0;
 float umidade = 0.0;
 
-// --- 4 Sonoffs ---
-bool sonoffEstado[SONOFF_COUNT] = {false, false, false, false};
+// --- 5 Sonoffs ---
+bool sonoffEstado[SONOFF_COUNT] = {false, false, false, false, false};
 
 // Nomes (definidos no config.h, copiamos para array em runtime)
 const char* sonoffNome[SONOFF_COUNT] = {
-  SONOFF_NAME_1, SONOFF_NAME_2, SONOFF_NAME_3, SONOFF_NAME_4
+  SONOFF_NAME_1, SONOFF_NAME_2, SONOFF_NAME_3, SONOFF_NAME_4, SONOFF_NAME_5
 };
 
 // Entity IDs do Home Assistant
 const char* sonoffEntity[SONOFF_COUNT] = {
-  HA_ENTITY_1, HA_ENTITY_2, HA_ENTITY_3, HA_ENTITY_4
+  HA_ENTITY_1, HA_ENTITY_2, HA_ENTITY_3, HA_ENTITY_4, HA_ENTITY_5
 };
 
 // --- Botões físicos ---
-const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4};
-unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0};
+const int btnPins[SONOFF_COUNT] = {BTN_PIN_1, BTN_PIN_2, BTN_PIN_3, BTN_PIN_4, BTN_PIN_5};
+unsigned long lastBtnPress[SONOFF_COUNT] = {0, 0, 0, 0, 0};
 
 // Timers
 unsigned long lastSensor = 0;
@@ -326,25 +326,36 @@ void atualizarDisplay() {
   // Linha separadora abaixo dos valores
   display.drawLine(0, 33, SCREEN_WIDTH, 33, SSD1306_WHITE);
 
-  // --- 4 Sonoffs em 2 colunas x 2 linhas ---
+  // --- 5 Sonoffs: 2 colunas x 3 linhas (última centralizada) ---
   display.setTextSize(1);
   for (int i = 0; i < SONOFF_COUNT; i++) {
-    int col = i % 2;           // 0=esquerda, 1=direita
-    int row = i / 2;           // 0=superior, 1=inferior
+    int col, row, xCirculo, xNome;
 
-    int xNome = col * 64 + 16;           // texto depois do círculo
-    int xCirculo = col * 64 + 4;         // posição X do círculo
-    int yCirculo = 42 + row * 14;        // centro Y do círculo
-    int yTexto = yCirculo - 3;           // Y do texto
+    if (i < 4) {
+      // Primeiras 4: grid 2x2
+      col = i % 2;
+      row = i / 2;
+      xCirculo = col * 64 + 4;
+      xNome = col * 64 + 16;
+    } else {
+      // 5ª tomada: centralizada na 3ª linha
+      col = 0;
+      row = 2;
+      // Centraliza: (128 - texto_width) / 2, aprox 30px
+      xCirculo = 45;
+      xNome = 57;
+    }
+
+    int yCirculo = 37 + row * 11;
+    int yTexto = yCirculo - 3;
 
     // Círculo: preenchido = LIGADO, vazio = DESLIGADO
     if (sonoffEstado[i]) {
-      display.fillCircle(xCirculo, yCirculo, 4, SSD1306_WHITE);   // preenchido
+      display.fillCircle(xCirculo, yCirculo, 4, SSD1306_WHITE);
     } else {
-      display.drawCircle(xCirculo, yCirculo, 4, SSD1306_WHITE);   // vazio
+      display.drawCircle(xCirculo, yCirculo, 4, SSD1306_WHITE);
     }
 
-    // Nome
     display.setCursor(xNome, yTexto);
     display.print(sonoffNome[i]);
   }

@@ -190,7 +190,7 @@
     <span id="updateTime">--</span>
   </div>
 
-  <div class="footer">ESP32 + DHT22 + 4 Sonoffs &bull; Home Assistant</div>
+  <div class="footer">ESP32 + DHT22 + 5 Sonoffs &bull; Home Assistant</div>
 </div>
 
 <script>
@@ -213,9 +213,9 @@ function criarSonoffHTML(id, nome) {
     </div>`;
 }
 
-// Cria os 4 cards de Sonoff (nomes atualizados pelo WebSocket)
+// Cria os 5 cards de Sonoff (nomes atualizados pelo WebSocket)
 const grid = document.getElementById('sonoffGrid');
-for (let i = 1; i <= 4; i++) {
+for (let i = 1; i <= 5; i++) {
   grid.innerHTML += criarSonoffHTML(i, 'Tomada ' + i);
 }
 
