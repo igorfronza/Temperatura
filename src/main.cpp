@@ -451,7 +451,7 @@ void haPost(String service, String entityId) {
   http.begin(url);
   http.addHeader("Authorization", "Bearer " + String(HA_TOKEN));
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(1500);  // timeout curto para não travar o loop
+  http.setTimeout(1000);  // timeout curto para não travar o loop
 
   String body = "{\"entity_id\":\"" + entityId + "\"}";
 
